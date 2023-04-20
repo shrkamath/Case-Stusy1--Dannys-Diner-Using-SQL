@@ -1,4 +1,4 @@
-# Case-Stusy1--Dannys-Diner
+# Case-Stusy1--Dannys-Diner-Using SQL
 
 Danny's Dinner is the first Case Study of 8WeekSQLChallenge by Danny Ma(Data With Danny).
 It is one of the most beautifully designed case study with all the required data and explanation with the schema diagram.
