@@ -1,0 +1,213 @@
+SELECT * FROM sales;
+
+/*1. What is the total amount each customer spent at the restaurant?*/
+SELECT customer_id,SUM(price) FROM sales AS S
+INNER JOIN menu AS M
+ON S.product_id = M.product_id
+GROUP BY customer_id;
+
+/*2. How many days has each customer visited the restaurant?*/
+SELECT customer_id, COUNT(DISTINCT order_date) As No_of_Visits
+FROM sales
+GROUP BY customer_id;
+
+/*3. What was the first item from the menu purchased by each customer?*/
+SELECT customer_id,order_date,product_name,
+DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY order_date ASC) AS "Rank"
+FROM sales AS S
+INNER JOIN menu AS M 
+ON S.product_id=M.product_id
+
+/*OR*/
+SELECT customer_id,order_date,product_name,
+ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date ASC) AS "Rank"
+FROM sales AS S
+INNER JOIN menu AS M 
+ON S.product_id=M.product_id /*hERE  you cannot filter the data as you cannot use whre clause for window function
+so we need to use CTE */
+
+WITH CTE AS(
+    SELECT customer_id,order_date,product_name,
+	DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY order_date ASC) AS "Rn",
+    ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY order_date ASC) AS "Rank"
+    FROM sales AS S
+    INNER JOIN menu AS M 
+    ON S.product_id=M.product_id
+	)
+SELECT* FROM CTE 
+WHERE "Rn" = 1;
+/*Here we can use RANK,ROW_NUMBER OR DENSE_RANK AND CHOOSE WHERE ACCORDINGLY IN THE CTE */
+
+/*4. What is the most purchased item on the menu and how many times was it purchased by all customers?*/
+SELECT * FROM menu
+SELECT * FROM sales
+
+SELECT product_name,COUNT(order_date)
+FROM sales AS S
+INNER JOIN menu AS M 
+ON S.product_id=M.product_id
+GROUP BY product_name
+ORDER BY COUNT(order_date) DESC
+LIMIT 1;
+
+/*5. Which item was the most popular for each customer?*/
+WITH CTE AS(
+	SELECT customer_id,product_name,COUNT(order_date) AS orders,
+	ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY COUNT(order_date) DESC) AS "RN"
+	FROM sales AS S
+	INNER JOIN menu AS M
+	ON S.product_id=M.product_id
+	GROUP BY product_name,customer_id
+	ORDER BY customer_id
+	)
+SELECT customer_id, product_name FROM CTE 
+WHERE "RN" = 1;
+/*use rank as there are multiple products with the same count  or row no here */
+WITH CTE AS(
+	SELECT customer_id,product_name,COUNT(order_date) AS orders,
+	RANK() OVER (PARTITION BY customer_id ORDER BY COUNT(order_date) DESC) AS "RK"
+	FROM sales AS S
+	INNER JOIN menu AS M
+	ON S.product_id=M.product_id
+	GROUP BY product_name,customer_id
+	ORDER BY customer_id
+	)
+SELECT customer_id, product_name FROM CTE 
+WHERE "RK" = 1;
+
+/*5. Which item was the most popular for each customer?*/
+WITH CTE AS(
+	SELECT customer_id,product_name,COUNT(order_date) AS orders,
+	RANK() OVER (PARTITION BY customer_id ORDER BY COUNT(order_date) DESC ) AS "rank"
+	FROM sales AS S
+	INNER JOIN menu AS M 
+	ON S.product_id=M.product_id
+	GROUP BY customer_id,product_name
+	)
+SELECT * FROM CTE 
+WHERE "rank" = 1;
+
+/*6. Which item was purchased first by the customer after they became a member?*/
+--Join the members and the sales and menu table and put a WHERE CLAUSE for order date>= join date 
+--put a rank or row number window function to get the ranks of the products 
+--apply a CTE and filter rank = 1
+
+WITH CTE AS(
+			SELECT S.customer_id,product_name,join_date,order_date,
+			RANK() OVER (PARTITION BY S.customer_id ORDER BY order_date ASC) AS "Rank"
+			FROM sales AS S
+			INNER JOIN members AS MEM
+			ON S.customer_id=MEM.customer_id
+			INNER JOIN menu AS M
+			ON S.product_id=M.product_id
+			WHERE order_date >= join_date
+	)
+SELECT * FROM CTE 
+WHERE "Rank" = 1;
+/*7. Which item was purchased just before the customer became a member?*/
+WITH CTE AS(
+		SELECT S.customer_id,product_name,order_date,join_date,
+		RANK() OVER (PARTITION BY S.customer_id ORDER BY order_date DESC) AS "Rank"
+		FROM sales AS S
+		INNER JOIN members AS MEM
+		ON S.customer_id = MEM.customer_id
+		INNER JOIN menu AS M 
+		ON S.product_id = M.product_id
+		WHERE order_date< join_date 
+	)
+SELECT * FROM CTE 
+WHERE "Rank"=1;
+
+-- 8. What is the total items and amount spent for each member before they became a member?
+SELECT S.customer_id,COUNT(product_name),SUM(price)
+FROM sales AS S
+INNER JOIN members AS MEM
+ON S.customer_id = MEM.customer_id
+INNER JOIN menu AS M 
+ON S.product_id = M.product_id
+WHERE order_date< join_date 
+GROUP BY S.customer_id;
+
+/*9.  If each $1 spent equates to 10 points and sushi has a 2x points multiplier - 
+--how many points would each customer have?*/
+--Here we  use the CASE Statement 
+
+SELECT customer_id,
+SUM(CASE 
+WHEN product_name = 'sushi' THEN price * 10* 2
+ELSE price * 10
+END )AS "points"
+FROM menu AS M 
+INNER JOIN sales AS S 
+ON M.product_id = S.product_id
+GROUP BY customer_id
+ORDER BY customer_id
+
+
+SELECT S.customer_id,
+SUM(CASE
+WHEN product_name = 'sushi' THEN price * 10* 2
+ELSE price *10
+END) AS "Points"
+FROM menu AS M 
+INNER JOIN sales AS S 
+ON M.product_id=S.product_id
+GROUP BY S.customer_id
+ORDER BY S.customer_id
+
+
+/* 10. In the first week after a customer joins the program (including their join date) 
+they earn 2x points on all items, not just sushi - how many points do customer A and B have at the end of January?*/
+
+--Bonus questions 
+/*Join All The Things
+The following questions are related creating basic data tables that Danny and his 
+team can use to quickly derive insights without needing to join the underlying tables using SQL.
+Recreate the following table output using the available data:
+Look at the table online and create the same one */
+SELECT S.customer_id,order_date,product_name,price,
+CASE
+WHEN join_date = null THEN 'N'
+WHEN order_date>= join_date THEN 'Y'
+ELSE 'N'
+END AS "Member"
+FROM sales AS S 
+INNER JOIN menu AS M 
+ON S.product_id = M.product_id
+LEFT JOIN members AS MEM
+ON S.customer_id = MEM.customer_id
+ORDER BY customer_id,order_date,price DESC
+
+/*Rank All The Things
+Danny also requires further information about the ranking of customer products,
+but he purposely does not need the ranking for non-member purchases so he expects null ranking values 
+for the records when customers are not yet part of the loyalty program.*/
+SELECT S.customer_id,order_date,product_name,price,
+CASE
+WHEN join_date = null THEN 'N'
+WHEN order_date>= join_date THEN 'Y'
+ELSE 'N'
+END AS "Member",
+CASE
+WHEN join_date = null THEN NULL
+WHEN order_datE < join_date THEN NULL
+ELSE RANK() OVER (PARTITION BY S.customer_id,
+				  (CASE
+					WHEN join_date = null THEN 'N'
+					WHEN order_date>= join_date THEN 'Y'
+					ELSE 'N'
+					END )
+				  ORDER BY order_date) 
+END AS "Ranking"
+FROM sales AS S 
+INNER JOIN menu AS M 
+ON S.product_id = M.product_id
+LEFT JOIN members AS MEM
+ON S.customer_id = MEM.customer_id
+ORDER BY customer_id,order_date,price DESC
+--use CASE statement and Rank() to get the Ranking column 
+--so here we need to do partition by the member as we were not getting the ranks properly 
+--but we cant use partition by member in the query 
+--so put the whole Case query used to create Member in partition by to get the Ranking properly 
+--try doing the CTE for the above code 
+
